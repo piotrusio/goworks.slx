@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"sync"
+	"time"
 
 	"golang.org/x/sys/windows/svc"
 )
@@ -11,6 +12,8 @@ import (
 const (
 	// A unique exit code for application-specific errors.
 	appSpecificExitCode = 1
+	// Maximum time to wait for graceful shutdown
+	maxShutdownTime = 30 * time.Second
 )
 
 // AppRunner defines the signature for the function that runs the core application logic.
@@ -21,7 +24,9 @@ type AppRunner func(ctx context.Context) error
 type windowsService struct {
 	runApp    AppRunner
 	cancel    context.CancelFunc
-	appExited chan struct{}
+	appCtx    context.Context
+	appDone   chan error
+	mu        sync.Mutex
 }
 
 // Execute is the entry point for the service, called by the Windows SCM.
@@ -29,27 +34,22 @@ func (s *windowsService) Execute(args []string, r <-chan svc.ChangeRequest, chan
 	changes <- svc.Status{State: svc.StartPending}
 
 	// Create a cancellable context for the entire application.
-	var appCtx context.Context
-	appCtx, s.cancel = context.WithCancel(context.Background())
-	defer s.cancel()
-
-	s.appExited = make(chan struct{})
-
-	var wg sync.WaitGroup
-	errChan := make(chan error, 1)
+	s.mu.Lock()
+	s.appCtx, s.cancel = context.WithCancel(context.Background())
+	s.appDone = make(chan error, 1)
+	s.mu.Unlock()
 
 	// Run the main application logic in a goroutine.
-	wg.Add(1)
 	go func() {
-		defer wg.Done()
-		errChan <- s.runApp(appCtx)
+		defer close(s.appDone)
+		s.appDone <- s.runApp(s.appCtx)
 	}()
 
 	changes <- svc.Status{State: svc.Running, Accepts: svc.AcceptStop | svc.AcceptShutdown}
 
 	for {
 		select {
-		case err := <-errChan:
+		case err := <-s.appDone:
 			// The application finished. If it was due to an error (and not just context cancellation),
 			// signal a service-specific error.
 			if err != nil && !errors.Is(err, context.Canceled) {
@@ -64,10 +64,25 @@ func (s *windowsService) Execute(args []string, r <-chan svc.ChangeRequest, chan
 				changes <- req.CurrentStatus
 			case svc.Stop, svc.Shutdown:
 				changes <- svc.Status{State: svc.StopPending}
-				// A stop was requested. Cancel the context to signal the app to shut down.
-				s.cancel()
-				wg.Wait() // Wait for the app goroutine to finish.
-				return false, 0
+				
+				// Signal the app to shut down
+				s.mu.Lock()
+				if s.cancel != nil {
+					s.cancel()
+				}
+				s.mu.Unlock()
+
+				// Wait for graceful shutdown with timeout
+				select {
+				case err := <-s.appDone:
+					if err != nil && !errors.Is(err, context.Canceled) {
+						return true, appSpecificExitCode
+					}
+					return false, 0
+				case <-time.After(maxShutdownTime):
+					// Force exit if graceful shutdown takes too long
+					return true, appSpecificExitCode
+				}
 			default:
 				// Do nothing for unhandled commands.
 			}

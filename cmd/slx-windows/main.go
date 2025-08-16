@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"path/filepath"
 
 	"github.com/joho/godotenv"
 	"golang.org/x/sys/windows/svc"
@@ -15,16 +14,9 @@ import (
 )
 
 func main() {
-	exePath, err := os.Executable()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: Could not get executable path: %v\n", err)
-	} else {
-		exeDir := filepath.Dir(exePath)
-		envPath := filepath.Join(exeDir, "slx.env")
-
-		if err := godotenv.Load(envPath); err != nil {
-			fmt.Printf("Error: Failed to load env file: %v\n", err)
-		}
+	// HARDCODED PATHS - Simple and bulletproof
+	if err := godotenv.Load("C:/SLX/slx.env"); err != nil {
+		fmt.Printf("Error: Failed to load env file: %v\n", err)
 	}
 
 	isInteractive, err := svc.IsAnInteractiveSession()
@@ -45,7 +37,8 @@ func main() {
 }
 
 func runAsService() error {
-	return app.Run()
+	// Force working directory and pass hardcoded log path
+	return app.Run("production", "C:/SLX/slx.log")
 }
 
 func handleInteractiveCommands() {
@@ -57,7 +50,7 @@ func handleInteractiveCommands() {
 	cmd := os.Args[1]
 
 	if cmd == "debug" {
-		if err := app.Run(); err != nil && !errors.Is(err, context.Canceled) {
+		if err := app.Run("development", "C:/SLX/slx.log"); err != nil && !errors.Is(err, context.Canceled) {
 			fmt.Fprintf(os.Stderr, "debug run failed: %v\n", err)
 			os.Exit(1)
 		}

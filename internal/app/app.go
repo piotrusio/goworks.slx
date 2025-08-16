@@ -19,11 +19,8 @@ import (
 )
 
 type config struct {
-	env     string
 	db      dbConfig
 	pg		pgConfig
-	// nats    publisherConfig
-	log     loggerConfig
 	disp    dispatcherConfig
 	aggPath string
 }
@@ -40,29 +37,16 @@ type dbConfig struct {
 	path         string
 }
 
-// type publisherConfig struct {
-// 	url   string
-// 	creds string
-// }
-
-type loggerConfig struct {
-	Filename   string
-	MaxSize    int
-	MaxBackups int
-	MaxAge     int
-	Compress   bool
-}
-
 type dispatcherConfig struct {
 	numWorkers   int
 	jobQueueSize int
 }
 
-func Run() error {
+func Run(env string, logPath string) error {
 	cfg := loadConfig()
 
-	logger := newLogger(cfg.env, cfg.log)
-	logger.Info("SLX Service starting", "env", cfg.env)
+	logger := newLogger(env, logPath)
+	logger.Info("SLX Service starting", "env", env)
 
 	appCtx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
@@ -90,16 +74,6 @@ func Run() error {
 	}()
 	logger.Info("SQL Server database initialized")
 
-	// Initialize NATS publisher
-	// natsconn, err := nats.Connect(cfg.nats.url, nats.UserCredentials(cfg.nats.creds))
-	// if err != nil {
-	// 	return fmt.Errorf("failed to connect to NATS: %w", err)
-	// }
-	// defer natsconn.Close()
-	// publisher := messaging.NewNatsPublisher(natsconn, logger)
-	// defer publisher.Close()
-	// logger.Info("NATS publisher initialized", "url", cfg.nats.url)
-
 	// Initialize Postgres
 	postgres, err := database.NewPostgres(startupCtx, cfg.pg.uri, logger)
 	if err != nil {
@@ -120,7 +94,11 @@ func Run() error {
 	// Initialize Dispatcher
 	disp := dispatcher.NewDispatcher(cfg.disp.numWorkers, cfg.disp.jobQueueSize, publisher, logger)
 	disp.Start()
-	defer disp.Stop()
+	defer func() {
+		logger.Info("stopping dispatcher...")
+		disp.Stop()
+		logger.Info("dispatcher stopped")
+	}()
 	logger.Info("dispatcher initialized", "numWorkers", cfg.disp.numWorkers, "jobQueueSize", cfg.disp.jobQueueSize)
 
 	// Register Aggregates
@@ -129,7 +107,11 @@ func Run() error {
 		logger.Error("failed to initialize repository", "error", err)
 		return fmt.Errorf("failed to initialize repository: %w", err)
 	}
-	defer repo.Close()
+	defer func() {
+		logger.Info("closing repository...")
+		repo.Close()
+		logger.Info("repository closed")
+	}()
 
 	// Initialize Tracker
 	trackerInstance, err := tracker.NewTracker(startupCtx, cfg.aggPath, repo, logger, db.Pool, disp)
@@ -144,31 +126,40 @@ func Run() error {
 	}
 	logger.Info("tracker started")
 
+	// Wait for shutdown signal
 	<-appCtx.Done()
-	logger.Info("SLX Service shutdown initiated", "signal", "termination")
+	logger.Info("SLX Service shutdown initiated", "reason", appCtx.Err())
 
-	// shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
-	// defer shutdownCancel()
+	// Create shutdown context with timeout
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer shutdownCancel()
+
+	logger.Info("waiting for graceful shutdown...")
+	
+	// Give some time for ongoing operations to complete
+	select {
+	case <-time.After(2 * time.Second):
+		logger.Info("graceful shutdown period completed")
+	case <-shutdownCtx.Done():
+		logger.Warn("shutdown timeout reached")
+	}
 
 	logger.Info("All background processes have finished. Application shut down gracefully.")
-
-	var shutdownErr error
-	logger.Info("SLX Service exiting.")
-	return shutdownErr
+	return nil
 }
 
-func newLogger(env string, logCfg loggerConfig) *slog.Logger {
+func newLogger(env string, logPath string) *slog.Logger {
 	var handler slog.Handler
 
 	if env == "development" {
 		handler = slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug})
 	} else {
 		lumberjackLogger := &lumberjack.Logger{
-			Filename:   logCfg.Filename,
-			MaxSize:    logCfg.MaxSize,
-			MaxBackups: logCfg.MaxBackups,
-			MaxAge:     logCfg.MaxAge,
-			Compress:   logCfg.Compress,
+			Filename:   logPath,
+			MaxSize:    100,
+			MaxBackups: 3,
+			MaxAge:     28,
+			Compress:   true,
 		}
 
 		handler = slog.NewTextHandler(lumberjackLogger, &slog.HandlerOptions{
@@ -180,49 +171,6 @@ func newLogger(env string, logCfg loggerConfig) *slog.Logger {
 
 func loadConfig() config {
 	var cfg config
-
-	cfg.env = os.Getenv("ENV")
-	if cfg.env == "" {
-		cfg.env = "development"
-	}
-
-	cfg.log.Filename = os.Getenv("LOG_FILENAME")
-	if cfg.env != "development" && cfg.log.Filename == "" {
-		panic("LOG_FILENAME must be set in production environment")
-	} else {
-		cfg.log.Filename = "./slx.log"
-	}
-
-	maxSize, _ := strconv.Atoi(os.Getenv("LOG_MAX_SIZE"))
-	if maxSize == 0 {
-		maxSize = 100 // 100 MB
-	}
-	cfg.log.MaxSize = maxSize
-
-	maxBackups, _ := strconv.Atoi(os.Getenv("LOG_MAX_BACKUPS"))
-	if maxBackups == 0 {
-		maxBackups = 3
-	}
-	cfg.log.MaxBackups = maxBackups
-
-	maxAge, _ := strconv.Atoi(os.Getenv("LOG_MAX_AGE"))
-	if maxAge == 0 {
-		maxAge = 28 // days
-	}
-	cfg.log.MaxAge = maxAge
-
-	compress := os.Getenv("LOG_COMPRESS")
-	cfg.log.Compress = compress == "true"
-
-	// cfg.nats.url = os.Getenv("NATS_URL")
-	// if cfg.nats.url == "" {
-	// 	panic("NATS_URL must be set in production environment")
-	// }
-
-	// cfg.nats.creds = os.Getenv("NATS_CREDS")
-	// if cfg.nats.creds == "" {
-	// 	panic("NATS_CREDS must be set in production environment")
-	// }
 
 	cfg.pg.uri = os.Getenv("POSTGRES_URI")
 	if cfg.pg.uri == "" {

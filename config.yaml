@@ -3,7 +3,7 @@ aggregates:
     interval: 60
     get_query: |
       SELECT
-        c.SYS_CHANGE_OPERATION as change_operation,
+        CASE c.SYS_CHANGE_OPERATION WHEN 'U' THEN 'updated' WHEN 'D' THEN 'deleted' WHEN 'I' THEN 'inserted' ELSE 'modified' END as change_operation,
         c.SYS_CHANGE_VERSION as change_version,
         CONVERT(VARCHAR(32), HASHBYTES('MD5', CAST(c.Twr_GidNumer AS VARCHAR(40))), 2) AS aggregate_key,
         JSON_QUERY((
@@ -17,7 +17,7 @@ aggregates:
       UNION ALL
 
       SELECT
-        c.SYS_CHANGE_OPERATION AS change_operation,
+        CASE c.SYS_CHANGE_OPERATION WHEN 'U' THEN 'updated' WHEN 'D' THEN 'deleted' WHEN 'I' THEN 'inserted' ELSE 'modified' END AS change_operation,
         c.SYS_CHANGE_VERSION as change_version,
         CONVERT(VARCHAR(32), HASHBYTES('MD5', CAST(c.Twr_GidNumer AS VARCHAR(40))), 2) AS aggregate_key,
         JSON_QUERY((
@@ -45,7 +45,7 @@ aggregates:
     interval: 60
     get_query: |
       SELECT
-        'U' as change_operation,
+        CASE 'U' WHEN 'U' THEN 'updated' WHEN 'D' THEN 'deleted' WHEN 'I' THEN 'inserted' ELSE 'modified' END as change_operation,
         @version + 1 as change_version,
         CONVERT(VARCHAR(32), HASHBYTES('MD5', CAST(t.Twr_GidNumer AS VARCHAR(40))), 2) AS aggregate_key,
         JSON_QUERY((
@@ -80,7 +80,7 @@ aggregates:
     interval: 60
     get_query: |
       SELECT
-          a.SYS_CHANGE_OPERATION AS change_operation,
+          CASE a.SYS_CHANGE_OPERATION WHEN 'U' THEN 'updated' WHEN 'D' THEN 'deleted' WHEN 'I' THEN 'inserted' ELSE 'modified' END AS change_operation,
           a.SYS_CHANGE_VERSION as change_version,
           CONVERT(VARCHAR(32), HASHBYTES('MD5', CAST(c.TwC_TwrNumer AS VARCHAR(40))), 2) AS aggregate_key,
           JSON_QUERY((
@@ -113,7 +113,7 @@ aggregates:
     interval: 60
     get_query: |
       SELECT
-          c.SYS_CHANGE_OPERATION as change_operation,
+          CASE c.SYS_CHANGE_OPERATION WHEN 'U' THEN 'updated' WHEN 'D' THEN 'deleted' WHEN 'I' THEN 'inserted' ELSE 'modified' END as change_operation,
           c.SYS_CHANGE_VERSION as change_version,
           CONVERT(VARCHAR(32), HASHBYTES('MD5', CAST(c.Zan_GidNumer AS VARCHAR(40))), 2) AS aggregate_key,
           JSON_QUERY((
@@ -128,7 +128,7 @@ aggregates:
       UNION ALL 
 
       SELECT
-          c.SYS_CHANGE_OPERATION as change_operation,
+          CASE c.SYS_CHANGE_OPERATION WHEN 'U' THEN 'updated' WHEN 'D' THEN 'deleted' WHEN 'I' THEN 'inserted' ELSE 'modified' END as change_operation,
           c.SYS_CHANGE_VERSION as change_version,
           CONVERT(VARCHAR(32), HASHBYTES('MD5', CAST(c.Zan_GidNumer AS VARCHAR(40))), 2) AS aggregate_key,
           JSON_QUERY((
@@ -192,7 +192,7 @@ aggregates:
     interval: 60
     get_query: |
       SELECT
-          c.SYS_CHANGE_OPERATION as change_operation,
+          CASE c.SYS_CHANGE_OPERATION WHEN 'U' THEN 'updated' WHEN 'D' THEN 'deleted' WHEN 'I' THEN 'inserted' ELSE 'modified' END as change_operation,
           c.SYS_CHANGE_VERSION as change_version,
           CONVERT(VARCHAR(32), HASHBYTES('MD5', CAST(c.Knt_GidNumer AS VARCHAR(40))), 2) AS aggregate_key,
           JSON_QUERY((
@@ -206,7 +206,7 @@ aggregates:
       UNION ALL
 
       SELECT
-          c.SYS_CHANGE_OPERATION as change_operation,
+          CASE c.SYS_CHANGE_OPERATION WHEN 'U' THEN 'updated' WHEN 'D' THEN 'deleted' WHEN 'I' THEN 'inserted' ELSE 'modified' END as change_operation,
           c.SYS_CHANGE_VERSION as change_version,
           CONVERT(VARCHAR(32), HASHBYTES('MD5', CAST(c.Knt_GidNumer AS VARCHAR(40))), 2) AS aggregate_key,
           JSON_QUERY((
@@ -352,7 +352,7 @@ aggregates:
               AND t.tpr_typ = 3
       )
       SELECT
-          c.SYS_CHANGE_OPERATION as change_operation,
+          CASE c.SYS_CHANGE_OPERATION WHEN 'U' THEN 'updated' WHEN 'D' THEN 'deleted' WHEN 'I' THEN 'inserted' ELSE 'modified' END as change_operation,
           c.SYS_CHANGE_VERSION as change_version,
           CONVERT(VARCHAR(32), HASHBYTES('MD5', CAST(c.Knt_GidNumer AS VARCHAR(40))), 2) AS aggregate_key,
           JSON_QUERY((

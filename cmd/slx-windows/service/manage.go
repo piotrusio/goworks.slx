@@ -97,7 +97,7 @@ func Stop() error {
 			return err
 		}
 		// Wait for the service to actually stop.
-		timeout := time.After(15 * time.Second)
+		timeout := time.After(45 * time.Second)
 		for status.State != svc.Stopped {
 			select {
 			case <-time.After(300 * time.Millisecond):

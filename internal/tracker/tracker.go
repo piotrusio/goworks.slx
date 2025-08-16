@@ -105,12 +105,14 @@ func (t *Tracker) Start(ctx context.Context) error {
 
 		// Start a goroutine for each aggregate to run erp changes cycle
 		go func(ctx context.Context, agg Aggregate) {
+			t.logger.Info("starting ERP cycle for aggregate", "name", agg.Name, "interval", agg.Interval)
 			ticker := time.NewTicker(time.Duration(agg.Interval) * time.Second)
 			defer ticker.Stop()
+			
 			for {
 				select {
 				case <-ctx.Done():
-					t.logger.Info("tracker stopping", "reason", ctx.Err())
+					t.logger.Info("stopping ERP cycle for aggregate", "name", agg.Name, "reason", ctx.Err())
 					return
 				case <-ticker.C:
 					// runErpChangesCycle(agg.Name, agg.GetQuery)
@@ -125,12 +127,14 @@ func (t *Tracker) Start(ctx context.Context) error {
 
 		// Start a goroutine for each aggregate to run app changes cycle
 		go func(ctx context.Context, agg Aggregate) {
+			t.logger.Info("starting APP cycle for aggregate", "name", agg.Name, "interval", agg.Interval)
 			ticker := time.NewTicker(time.Duration(agg.Interval) * time.Second)
 			defer ticker.Stop()
+			
 			for {
 				select {
 				case <-ctx.Done():
-					t.logger.Info("tracker stopping", "reason", ctx.Err())
+					t.logger.Info("stopping APP cycle for aggregate", "name", agg.Name, "reason", ctx.Err())
 					return
 				case <-ticker.C:
 					// t.runAppChangesCycle(agg)

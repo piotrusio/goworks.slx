@@ -1,3 +1,4 @@
+
 package main
 
 import (
@@ -13,7 +14,7 @@ func main() {
 		fmt.Printf("Warning: no .env file found in current directory\n")
 	}
 
-	if err := app.Run(); err != nil {
+	if err := app.Run("development", "./slx.log"); err != nil {
 		fmt.Printf("Error: %v\n", err)
 		os.Exit(1)
 	}
