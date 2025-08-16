@@ -22,7 +22,7 @@ type config struct {
 	env     string
 	db      dbConfig
 	pg		pgConfig
-	nats    publisherConfig
+	// nats    publisherConfig
 	log     loggerConfig
 	disp    dispatcherConfig
 	aggPath string
@@ -40,10 +40,10 @@ type dbConfig struct {
 	path         string
 }
 
-type publisherConfig struct {
-	url   string
-	creds string
-}
+// type publisherConfig struct {
+// 	url   string
+// 	creds string
+// }
 
 type loggerConfig struct {
 	Filename   string
@@ -214,15 +214,15 @@ func loadConfig() config {
 	compress := os.Getenv("LOG_COMPRESS")
 	cfg.log.Compress = compress == "true"
 
-	cfg.nats.url = os.Getenv("NATS_URL")
-	if cfg.nats.url == "" {
-		panic("NATS_URL must be set in production environment")
-	}
+	// cfg.nats.url = os.Getenv("NATS_URL")
+	// if cfg.nats.url == "" {
+	// 	panic("NATS_URL must be set in production environment")
+	// }
 
-	cfg.nats.creds = os.Getenv("NATS_CREDS")
-	if cfg.nats.creds == "" {
-		panic("NATS_CREDS must be set in production environment")
-	}
+	// cfg.nats.creds = os.Getenv("NATS_CREDS")
+	// if cfg.nats.creds == "" {
+	// 	panic("NATS_CREDS must be set in production environment")
+	// }
 
 	cfg.pg.uri = os.Getenv("POSTGRES_URI")
 	if cfg.pg.uri == "" {
