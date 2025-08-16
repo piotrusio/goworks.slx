@@ -1,0 +1,42 @@
+name: goworks-slx
+
+services:
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    platform: linux/amd64
+    container_name: sqlserver
+    restart: unless-stopped
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: "SalesW0rk5"
+    ports:
+      - "1433:1433"
+    volumes:
+      - ${HOME}/Sqlserver/slx:/var/opt/mssql
+      - ./.data:/var/opt/mssql/import
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      - ./post-import.sql:/docker-entrypoint-initdb.d/post-import.sql:ro
+      - ./entrypoint.sh:/entrypoint.sh:ro
+    entrypoint: ["/entrypoint.sh"]
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P \"$$MSSQL_SA_PASSWORD\" -Q \"SELECT 1\" -C || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    networks:
+      - slx-net
+
+  nats:
+    image: nats:latest
+    container_name: nats
+    restart: unless-stopped
+    ports:
+      - "4222:4222" # Client port
+      - "8222:8222" # Monitoring port
+    networks:
+      - slx-net
+
+networks:
+  slx-net:
+    name: slx-net

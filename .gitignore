@@ -25,8 +25,20 @@ go.work
 go.work.sum
 
 # env file
-.env
+*.env
+
+# creds file
+*.creds
+
+# log files
+*.log
+
+# db files
+*.db
 
 # Editor/IDE
 # .idea/
 # .vscode/
+
+**/.data
+

@@ -1,0 +1,371 @@
+aggregates:
+  - name: "sku"
+    interval: 60
+    get_query: |
+      SELECT
+        c.SYS_CHANGE_OPERATION as change_operation,
+        c.SYS_CHANGE_VERSION as change_version,
+        CONVERT(VARCHAR(32), HASHBYTES('MD5', CAST(c.Twr_GidNumer AS VARCHAR(40))), 2) AS aggregate_key,
+        JSON_QUERY((
+          SELECT
+            c.Twr_GidNumer as sku_id
+          FOR JSON PATH, WITHOUT_ARRAY_WRAPPER
+        )) AS payload
+      FROM CHANGETABLE(CHANGES CDN.TwrKarty, @version) AS c
+      WHERE c.SYS_CHANGE_OPERATION = 'D'
+
+      UNION ALL
+
+      SELECT
+        c.SYS_CHANGE_OPERATION AS change_operation,
+        c.SYS_CHANGE_VERSION as change_version,
+        CONVERT(VARCHAR(32), HASHBYTES('MD5', CAST(c.Twr_GidNumer AS VARCHAR(40))), 2) AS aggregate_key,
+        JSON_QUERY((
+          SELECT
+              c.Twr_GidNumer as sku_id,
+              f.TGD_Kod as sku_group,
+              e.TGD_Kod sku_subgroup,
+              UPPER(t.twr_kod) as sku_code,
+              UPPER(t.twr_nazwa) as sku_name,
+              t.twr_ean as sku_ean_code,
+              UPPER(t.twr_jm) as sku_unit_prefix,
+              CASE t.twr_archiwalny WHEN 0 THEN 'AKTYWNY' ELSE 'NIEAKTYWNY' END AS sku_status
+          FOR JSON PATH, WITHOUT_ARRAY_WRAPPER
+        )) AS payload
+      FROM CHANGETABLE(CHANGES CDN.TwrKarty, @version) AS c
+          JOIN CDN.TwrKarty t ON c.Twr_GIDNumer = t.Twr_GIDNumer
+          JOIN CDN.TwrGrupyDom d ON t.Twr_GIDNumer = d.TGD_GIDNumer and t.Twr_GIDTyp = d.TGD_GIDTyp
+          JOIN CDN.TwrGrupyDom e ON d.TGD_GrONumer = e.TGD_GIDNumer and d.TGD_GrOTyp = e.TGD_GIDTyp
+          JOIN CDN.TwrGrupyDom f ON e.TGD_GrONumer = f.TGD_GIDNumer and e.TGD_GrOTyp = f.TGD_GIDTyp
+      WHERE 1=1
+          AND f.TGD_GrOTyp = -16
+          AND f.TGD_GrONumer = 2
+
+  - name: "stock"
+    interval: 60
+    get_query: |
+      SELECT
+        'U' as change_operation,
+        @version + 1 as change_version,
+        CONVERT(VARCHAR(32), HASHBYTES('MD5', CAST(t.Twr_GidNumer AS VARCHAR(40))), 2) AS aggregate_key,
+        JSON_QUERY((
+          SELECT
+            t.twr_gidnumer as sku_id,
+            t.Twr_Kod sku_code,
+            JSON_QUERY((
+                SELECT
+                    x.Dst_Cecha as batch_number,
+                    m.MAG_Kod warhouse_code,
+                    m.MAG_Nazwa warehouse_name,
+                    z.TwZ_IlSpr stock_qty
+                FROM CDN.TwrZasoby z
+                    JOIN CDN.Dostawy x ON x.Dst_GidNumer = z.TwZ_DstNumer AND x.Dst_GidTyp = z.TwZ_DstTyp
+                    JOIN CDN.Magazyny m ON z.TwZ_MagNumer = m.MAG_GIDNumer
+                WHERE z.TwZ_TwrNumer = t.Twr_GIDNumer
+                    AND z.TwZ_MagNumer IN (1, 14, 19, 23, 29, 30, 35, 70, 81, 83, 87, 88)
+                FOR JSON PATH
+            )) AS sku_stock
+          FOR JSON PATH, WITHOUT_ARRAY_WRAPPER
+        )) AS payload 
+      FROM CDN.TwrKarty t
+          JOIN CDN.TwrGrupyDom d ON t.Twr_GIDNumer = d.TGD_GIDNumer and t.Twr_GIDTyp = d.TGD_GIDTyp
+          JOIN CDN.TwrGrupyDom e ON d.TGD_GrONumer = e.TGD_GIDNumer and d.TGD_GrOTyp = e.TGD_GIDTyp
+          JOIN CDN.TwrGrupyDom f ON e.TGD_GrONumer = f.TGD_GIDNumer and e.TGD_GrOTyp = f.TGD_GIDTyp
+      WHERE 1=1
+          AND f.TGD_GrOTyp = -16
+          AND f.TGD_GrONumer = 2
+          AND t.Twr_Archiwalny = 0
+
+  - name: "pricelist"
+    interval: 60
+    get_query: |
+      SELECT
+          a.SYS_CHANGE_OPERATION AS change_operation,
+          a.SYS_CHANGE_VERSION as change_version,
+          CONVERT(VARCHAR(32), HASHBYTES('MD5', CAST(c.TwC_TwrNumer AS VARCHAR(40))), 2) AS aggregate_key,
+          JSON_QUERY((
+              SELECT
+                  c.twc_tcnid as pricelist_id,
+                  c.twc_id as price_id,
+                  t.Twr_GIDNumer as sku_id,
+                  t.TwR_Kod as sku_code,
+                  SUBSTRING(x.naz_nazwa,1,10) as pricelist_name,
+                  c.twc_waluta as price_currency,
+                  c.twc_wartosc as price_value,
+                  SUBSTRING(x.naz_nazwa,11,1) AS price_type
+              FOR JSON PATH, WITHOUT_ARRAY_WRAPPER
+          )) AS payload
+      FROM CHANGETABLE(CHANGES CDN.TwrCeny, @version) AS a
+          JOIN CDN.TwrCeny c ON a.TwC_ID = c.TwC_ID
+          JOIN CDN.TwrCenyNag n ON c.TwC_TcNId = n.TCN_Id
+          JOIN CDN.TwrKarty t ON c.TwC_TwrNumer = t.Twr_GIDNumer
+          JOIN CDN.Nazwy x ON n.TCN_RodzajCeny = x.Naz_GIDLp AND x.Naz_GIDTyp = 64
+          JOIN CDN.TwrGrupyDom d ON t.Twr_GIDNumer = d.TGD_GIDNumer and t.Twr_GIDTyp = d.TGD_GIDTyp
+          JOIN CDN.TwrGrupyDom e ON d.TGD_GrONumer = e.TGD_GIDNumer and d.TGD_GrOTyp = e.TGD_GIDTyp
+          JOIN CDN.TwrGrupyDom f ON e.TGD_GrONumer = f.TGD_GIDNumer and e.TGD_GrOTyp = f.TGD_GIDTyp
+      WHERE 1=1
+          AND n.tcn_stan = 5
+          AND f.TGD_GrOTyp = -16
+          AND f.TGD_GrONumer = 2
+          AND t.Twr_Archiwalny = 0
+
+  - name: "order"
+    interval: 60
+    get_query: |
+      SELECT
+          c.SYS_CHANGE_OPERATION as change_operation,
+          c.SYS_CHANGE_VERSION as change_version,
+          CONVERT(VARCHAR(32), HASHBYTES('MD5', CAST(c.Zan_GidNumer AS VARCHAR(40))), 2) AS aggregate_key,
+          JSON_QUERY((
+              SELECT
+                  c.Zan_GidNumer as order_id
+              FOR JSON PATH, WITHOUT_ARRAY_WRAPPER
+          )) AS payload
+      FROM CHANGETABLE(CHANGES CDN.ZamNag, @version) AS c
+      WHERE 1=1
+          AND c.SYS_CHANGE_OPERATION = 'D'
+
+      UNION ALL 
+
+      SELECT
+          c.SYS_CHANGE_OPERATION as change_operation,
+          c.SYS_CHANGE_VERSION as change_version,
+          CONVERT(VARCHAR(32), HASHBYTES('MD5', CAST(c.Zan_GidNumer AS VARCHAR(40))), 2) AS aggregate_key,
+          JSON_QUERY((
+              SELECT
+                  n.zan_gidnumer AS order_id,
+                  ('ZS-' + CONCAT(n.zan_zamnumer, '/', n.zan_zamrok, '/', n.zan_zamseria)) AS order_number,
+                  k.knt_gidnumer AS customer_id,
+                  k.knt_akronim AS customer_code,
+                  case n.zan_stan 
+                  WHEN 0 THEN 'ZAPYTANIE'
+                  WHEN 1 THEN 'OFERTA'
+                  WHEN 2 THEN 'NIEPOTWIERDZONE'
+                  WHEN 3 THEN 'POTWIERDZONE'
+                  WHEN 4 THEN 'ZAAKCEPTOWANE'
+                  WHEN 5 THEN 'W RALIZACJI'
+                  WHEN 32 THEN 'ANULOWANE'
+                  WHEN 16 THEN 'ARCHIWUM'
+                  WHEN 35 THEN 'ANULOWANE POTWIERDZONE'
+                  WHEN 19 THEN 'ODRZUCONE'
+                  WHEN 21 THEN 'ZREALIZOWANE'
+                  WHEN 51 THEN 'ZAMKNIĘTE POTWIERDZONE'
+                  WHEN 53 THEN 'ZAMKNIĘTE W REALIZACJI'
+                  end as order_status,
+                  n.zan_datawystawienia as order_created,
+                  n.zan_datarealizacji as order_realized,
+                  n.zan_kodrodzajutransakcji as order_type,
+                  UPPER(n.zan_spdostawy) as delivery_type,
+                  UPPER(n.zan_formanazwa) as payment_method,
+                  n.zan_terminplatnosci as payment_term,
+                  n.zan_rabat as order_base_discount,
+                  n.zan_flaganb as order_net_gross,
+                  JSON_QUERY((
+                      SELECT
+                          e.zae_gidlp AS line_id,
+                          e.zae_twrnumer AS sku_id,
+                          e.zae_twrkod AS sku_code,
+                          m.mag_kod AS warehouse_code,
+                          e.zae_flaganb AS net_gross_flag,
+                          e.zae_flagavat AS vat_flag,
+                          e.zae_ilosc AS order_line_qty,
+                          e.zae_rabat AS order_line_discount,
+                          e.zae_wartoscporabacie AS order_line_value,
+                          e.zae_waluta AS currency_code,
+                          e.zae_stawkapod AS tax_rate,
+                          e.zae_cenakatalogowa AS sku_base_price,
+                          e.zae_cenauzgodniona AS sku_calculated_price
+                      FROM cdn.zamelem e
+                          JOIN cdn.magazyny m ON e.zae_magnumer = m.mag_gidnumer
+                      WHERE e.zae_gidnumer = n.zan_gidnumer
+                      FOR JSON PATH
+                  )) AS order_lines
+              FOR JSON PATH, WITHOUT_ARRAY_WRAPPER
+          )) AS payload
+      FROM CHANGETABLE(CHANGES CDN.ZamNag, @version) AS c
+          JOIN CDN.ZamNag n ON c.zan_gidnumer = n.zan_gidnumer
+          JOIN CDN.KntKarty k ON n.zan_kntnumer = k.knt_gidnumer
+      WHERE 1=1
+          AND n.zan_zamtyp = 1280
+
+  - name: "customer"
+    interval: 60
+    get_query: |
+      SELECT
+          c.SYS_CHANGE_OPERATION as change_operation,
+          c.SYS_CHANGE_VERSION as change_version,
+          CONVERT(VARCHAR(32), HASHBYTES('MD5', CAST(c.Knt_GidNumer AS VARCHAR(40))), 2) AS aggregate_key,
+          JSON_QUERY((
+              SELECT
+              c.Knt_GidNumer as customer_id
+              FOR JSON PATH, WITHOUT_ARRAY_WRAPPER
+          )) AS payload
+      FROM CHANGETABLE(CHANGES CDN.KntKarty, @version) AS c
+      WHERE c.SYS_CHANGE_OPERATION = 'D'
+
+      UNION ALL
+
+      SELECT
+          c.SYS_CHANGE_OPERATION as change_operation,
+          c.SYS_CHANGE_VERSION as change_version,
+          CONVERT(VARCHAR(32), HASHBYTES('MD5', CAST(c.Knt_GidNumer AS VARCHAR(40))), 2) AS aggregate_key,
+          JSON_QUERY((
+              SELECT
+                  c.knt_gidnumer as customer_id,
+                  k.knt_akronim as customer_code,
+                  e.KGD_Kod as customer_group,
+                  UPPER(COALESCE(NULLIF(TRIM(CONCAT_WS(' ', p.prc_imie1, p.prc_nazwisko)), ''), 'N/D')) AS customer_owner,        
+                  UPPER(TRIM(CONCAT_WS(' ', k.knt_nazwa1, k.knt_nazwa2, k.knt_nazwa3))) AS customer_name,
+                  k.knt_nipprefiks as customer_tax_prefix,
+                  COALESCE(k.knt_nipe, k.knt_nip) AS customer_tax_id,
+                  TRIM(SUBSTRING(n.naz_nazwa,1,10)) AS customer_price_list,
+                  k.knt_rabat AS customer_discount,
+                  CASE k.knt_archiwalny WHEN 0 THEN 'AKTYWNY' ELSE 'NIEAKTYWNY' END AS customer_status,
+                  JSON_QUERY((
+                      SELECT
+                      a.kna_akronim as adress_code,
+                      CASE
+                          WHEN k.knt_knanumer = a.KnA_GIDNumer THEN 'AKTUALNY'
+                          WHEN a.kna_wysylkowy = 1 THEN 'WYSYŁKOWY'
+                          ELSE 'INNY'
+                      END AS address_type,
+                      UPPER(a.kna_ulica) as adress_street,
+                      UPPER(a.kna_kraj) as adress_country,
+                      UPPER(a.kna_kodp) as adress_zip,
+                      UPPER(a.kna_miasto) as adress_city,
+                      UPPER(a.kna_wojewodztwo) as adress_district,
+                      a.kna_telefon1 as adress_phone1,
+                      a.kna_telefon2 as adress_phone2,
+                      a.kna_fax as adress_fax,
+                      a.kna_modem as adress_mode,
+                      a.kna_telex as adress_gsm,
+                      a.kna_email as adress_email
+                      FROM CDN.KntAdresy a
+                      WHERE a.KnA_KntNumer = k.Knt_GIDNumer AND a.kna_dataarc = 0
+                      FOR JSON PATH
+                  )) AS adresses,
+                  JSON_QUERY((
+                      SELECT
+                          o.kns_kntlp as id,
+                          o.kns_nazwa as name,
+                          o.kns_stanowisko as position,
+                          o.kns_email as email,
+                          o.kns_telefon as phone,
+                          o.kns_telefonk as mobile
+                      FROM CDN.KntOsoby o
+                      WHERE k.Knt_GIDNumer = o.KnS_KntNumer AND o.kns_archiwalny = 0
+                      FOR JSON PATH
+                  )) AS contacts,
+                  JSON_QUERY((
+                      SELECT
+                          o.klk_id as credit_id,
+                          DATEADD(DAY, o.klk_dataod, '1800-12-28') as valid_from,
+                          DATEADD(DAY, o.klk_datado, '1800-12-28') as valid_to,
+                          o.klk_maxlimitwart as credit_value,
+                          o.klk_waluta as credit_currency
+                      FROM CDN.KntLimityK o
+                      WHERE k.Knt_GIDNumer = o.Klk_KntNumer
+                      AND o.klk_datado > DATEDIFF(DAY, '1800-12-28', GETDATE())
+                      FOR JSON PATH
+                  )) AS credits
+                  FOR JSON PATH, WITHOUT_ARRAY_WRAPPER
+              )) AS payload
+      FROM CHANGETABLE(CHANGES CDN.KntKarty, @version) AS c
+          JOIN CDN.KntKarty AS k ON c.knt_gidnumer = k.knt_gidnumer
+          JOIN CDN.KntGrupyDom d ON k.knt_gidnumer = d.kgd_gidnumer AND d.kgd_gidtyp = k.knt_gidtyp
+          JOIN CDN.KntGrupyDom e ON d.kgd_grotyp = e.kgd_gidtyp AND d.kgd_gronumer = e.kgd_gidnumer
+          LEFT JOIN CDN.KntOpiekun o ON k.knt_gidnumer = o.kto_kntnumer AND k.knt_gidtyp = o.kto_knttyp
+          LEFT JOIN CDN.PrcKarty p ON o.kto_prcnumer = p.prc_gidnumer
+          LEFT JOIN CDN.Nazwy n ON k.knt_cena = n.naz_gidlp AND n.naz_gidtyp = 64
+
+  - name: "priceterm"
+    interval: 60
+    get_query: |
+      WITH node_descendants (
+          original_node_gidtyp,
+          original_node_gidnumer,
+          current_gidtyp,
+          current_gidnumer
+      ) AS (
+          -- Anchor member: Start with all groups that are NODES
+          SELECT
+          g.tgd_gidtyp,
+          g.tgd_gidnumer,
+          g.tgd_gidtyp,
+          g.tgd_gidnumer
+          FROM cdn.twrgrupydom g
+          WHERE g.tgd_gidtyp = -16 -- Only start traversal from groups that are nodes
+
+          UNION ALL
+
+          -- Recursive member: Find children of the current item in the path
+          SELECT
+          nd.original_node_gidtyp,
+          nd.original_node_gidnumer,
+          child.tgd_gidtyp,
+          child.tgd_gidnumer
+          FROM cdn.twrgrupydom child
+          JOIN node_descendants nd ON child.tgd_grotyp = nd.current_gidtyp
+              AND child.tgd_gronumer = nd.current_gidnumer
+          WHERE nd.current_gidtyp = -16
+      ),
+      effective_leaves AS (
+          -- Case 1: For original NODES (-16), find all their descendant LEAVES (16)
+          SELECT
+              nd.original_node_gidtyp AS input_gidtyp,
+              nd.original_node_gidnumer AS input_gidnumer,
+              nd.current_gidtyp AS leaf_gidtyp,
+              nd.current_gidnumer AS leaf_gidnumer
+          FROM node_descendants nd
+          WHERE nd.current_gidtyp = 16 -- Filter for paths in node_descendants that end in a LEAF
+
+          UNION ALL
+
+          -- Case 2: For items that are LEAVES (16) themselves in cdn.twrgrupydom
+          SELECT
+              g.tgd_gidtyp AS input_gidtyp,
+              g.tgd_gidnumer AS input_gidnumer,
+              g.tgd_gidtyp AS leaf_gidtyp,
+              g.tgd_gidnumer AS leaf_gidnumer
+          FROM cdn.twrgrupydom g
+          WHERE g.tgd_gidtyp = 16 -- Select all groups that are defined as leaves
+      ),
+      terms AS (
+          SELECT
+              k.kpr_kntnumer as customer_id,
+              e.leaf_gidnumer as sku_id,
+              tk.twr_kod as sku_code,
+              t.tpr_wartosc as price_value,
+              t.tpr_waluta as price_currency,
+              t.tpr_flaganb as price_type,
+              --the twrtyp +16 indicate that the promotion was set up on the leaf
+              --the leaf promotion has priority over node promotion(-16)
+              ROW_NUMBER() OVER (PARTITION BY e.leaf_gidnumer ORDER BY t.tpr_twrtyp DESC) AS row_num
+          FROM cdn.kntpromocje k
+              JOIN cdn.prmkarty p ON k.kpr_prmid = p.prm_id
+              JOIN cdn.twrpromocje t ON p.prm_id = t.tpr_prmid
+              JOIN effective_leaves e ON t.tpr_twrtyp = e.input_gidtyp AND t.tpr_twrnumer = e.input_gidnumer
+              JOIN cdn.TwrKarty tk on e.leaf_gidnumer = tk.twr_gidnumer
+          WHERE 1=1
+              AND p.prm_stan = 1
+              AND t.tpr_aktywny = 1
+              AND t.tpr_typ = 3
+      )
+      SELECT
+          c.SYS_CHANGE_OPERATION as change_operation,
+          c.SYS_CHANGE_VERSION as change_version,
+          CONVERT(VARCHAR(32), HASHBYTES('MD5', CAST(c.Knt_GidNumer AS VARCHAR(40))), 2) AS aggregate_key,
+          JSON_QUERY((
+              SELECT
+                  c.knt_gidnumer as customer_id,
+                  k.knt_akronim as cusomer_code,
+                  t.sku_id,
+                  t.sku_code,
+                  t.price_value,
+                  t.price_currency,
+                  t.price_type
+              FOR JSON PATH, WITHOUT_ARRAY_WRAPPER
+          )) AS payload
+      FROM CHANGETABLE(CHANGES CDN.KntKarty, @version) AS c
+          JOIN CDN.KntKarty k on c.knt_gidnumer = k.knt_gidnumer
+          JOIN terms t ON t.customer_id = k.knt_gidnumer
