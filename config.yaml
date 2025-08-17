@@ -22,14 +22,14 @@ aggregates:
         CONVERT(VARCHAR(32), HASHBYTES('MD5', CAST(c.Twr_GidNumer AS VARCHAR(40))), 2) AS aggregate_key,
         JSON_QUERY((
           SELECT
+              CASE t.twr_archiwalny WHEN 0 THEN 'AKTYWNY' ELSE 'NIEAKTYWNY' END AS status,
               c.Twr_GidNumer as sku_id,
-              f.TGD_Kod as sku_group,
-              e.TGD_Kod sku_subgroup,
               UPPER(t.twr_kod) as sku_code,
               UPPER(t.twr_nazwa) as sku_name,
-              t.twr_ean as sku_ean_code,
-              UPPER(t.twr_jm) as sku_unit_prefix,
-              CASE t.twr_archiwalny WHEN 0 THEN 'AKTYWNY' ELSE 'NIEAKTYWNY' END AS sku_status
+              f.TGD_Kod as sku_group,
+              e.TGD_Kod as sku_subgroup,
+              t.twr_ean as sku_eancode,
+              UPPER(t.twr_jm) as sku_unitprefix
           FOR JSON PATH, WITHOUT_ARRAY_WRAPPER
         )) AS payload
       FROM CHANGETABLE(CHANGES CDN.TwrKarty, @version) AS c
@@ -54,10 +54,10 @@ aggregates:
             t.Twr_Kod sku_code,
             JSON_QUERY((
                 SELECT
-                    x.Dst_Cecha as batch_number,
-                    m.MAG_Kod warhouse_code,
-                    m.MAG_Nazwa warehouse_name,
-                    z.TwZ_IlSpr stock_qty
+                    x.Dst_Cecha as sku_batch_number,
+                    m.MAG_Kod sku_warehouse_code,
+                    m.MAG_Nazwa sku_warehouse_name,
+                    z.TwZ_IlSpr sku_stock_qty
                 FROM CDN.TwrZasoby z
                     JOIN CDN.Dostawy x ON x.Dst_GidNumer = z.TwZ_DstNumer AND x.Dst_GidTyp = z.TwZ_DstTyp
                     JOIN CDN.Magazyny m ON z.TwZ_MagNumer = m.MAG_GIDNumer
@@ -86,13 +86,13 @@ aggregates:
           JSON_QUERY((
               SELECT
                   c.twc_tcnid as pricelist_id,
-                  c.twc_id as price_id,
-                  t.Twr_GIDNumer as sku_id,
-                  t.TwR_Kod as sku_code,
+                  c.twc_id as pricelist_price_id,
+                  t.Twr_GIDNumer as pricelist_sku_id,
+                  t.TwR_Kod as pricelist_sku_code,
                   SUBSTRING(x.naz_nazwa,1,10) as pricelist_name,
-                  c.twc_waluta as price_currency,
-                  c.twc_wartosc as price_value,
-                  SUBSTRING(x.naz_nazwa,11,1) AS price_type
+                  c.twc_waluta as pricelist_currency,
+                  c.twc_wartosc as pricelist_price,
+                  SUBSTRING(x.naz_nazwa,11,1) AS pricelist_net_gross_flag
               FOR JSON PATH, WITHOUT_ARRAY_WRAPPER
           )) AS payload
       FROM CHANGETABLE(CHANGES CDN.TwrCeny, @version) AS a
@@ -134,9 +134,10 @@ aggregates:
           JSON_QUERY((
               SELECT
                   n.zan_gidnumer AS order_id,
-                  ('ZS-' + CONCAT(n.zan_zamnumer, '/', n.zan_zamrok, '/', n.zan_zamseria)) AS order_number,
-                  k.knt_gidnumer AS customer_id,
-                  k.knt_akronim AS customer_code,
+                  ('ZS-' + CONCAT(n.zan_zamnumer, '/', n.zan_zamrok, '/', n.zan_zamseria)) AS order_reference_number,
+                  k.knt_gidnumer AS order_customer_id,
+                  k.knt_akronim AS order_customer_code,
+                  m.mag_kod AS order_warehouse_code,
                   case n.zan_stan 
                   WHEN 0 THEN 'ZAPYTANIE'
                   WHEN 1 THEN 'OFERTA'
@@ -152,29 +153,36 @@ aggregates:
                   WHEN 51 THEN 'ZAMKNIĘTE POTWIERDZONE'
                   WHEN 53 THEN 'ZAMKNIĘTE W REALIZACJI'
                   end as order_status,
-                  n.zan_datawystawienia as order_created,
-                  n.zan_datarealizacji as order_realized,
-                  n.zan_kodrodzajutransakcji as order_type,
-                  UPPER(n.zan_spdostawy) as delivery_type,
-                  UPPER(n.zan_formanazwa) as payment_method,
-                  n.zan_terminplatnosci as payment_term,
+                  CAST(DATEADD(DAY, n.zan_datawystawienia, '18001228') AS DATE) AS order_date,
+                  CAST(DATEADD(DAY, n.zan_datarealizacji, '18001228') AS DATE) AS order_fulfillment_date,
+                  n.zan_krajprzezwys as order_target_country,
+                  CASE n.zan_kodrodzajutransportu
+                      WHEN 1 THEN 'TRANSPORT MORSKI'
+                      WHEN 2 THEN 'TRANSPORT KOLEJOWY'
+                      WHEN 3 THEN 'TRANSPORT DROGOWY'
+                      WHEN 4 THEN 'TRANSPORT LOTNICZY'
+                      ELSE 'TRANSPORT INNY'
+                  END AS order_transport_type,
+                  UPPER(n.zan_spdostawy) as order_delivery_type,
+                  UPPER(n.zan_formanazwa) as order_payment_type,
+                  n.zan_terminplatnosci as order_payment_term,
                   n.zan_rabat as order_base_discount,
-                  n.zan_flaganb as order_net_gross,
+                  n.zan_waluta as order_currency,
+                  n.zan_flaganb as order_net_gross_flag,
+                  n.zan_realwcalosci as order_no_split,
                   JSON_QUERY((
                       SELECT
-                          e.zae_gidlp AS line_id,
-                          e.zae_twrnumer AS sku_id,
-                          e.zae_twrkod AS sku_code,
-                          m.mag_kod AS warehouse_code,
-                          e.zae_flaganb AS net_gross_flag,
-                          e.zae_flagavat AS vat_flag,
+                          e.zae_gidlp AS order_line_id,
+                          e.zae_twrnumer AS order_line_sku_id,
+                          e.zae_twrkod AS order_line_sku_code,
+                          e.zae_flagavat AS order_line_vat_flag,
                           e.zae_ilosc AS order_line_qty,
                           e.zae_rabat AS order_line_discount,
                           e.zae_wartoscporabacie AS order_line_value,
-                          e.zae_waluta AS currency_code,
-                          e.zae_stawkapod AS tax_rate,
-                          e.zae_cenakatalogowa AS sku_base_price,
-                          e.zae_cenauzgodniona AS sku_calculated_price
+                          e.zae_waluta AS order_line_currency_code,
+                          e.zae_stawkapod AS order_line_tax_rate,
+                          e.zae_cenakatalogowa AS order_line_sku_base_price,
+                          e.zae_cenauzgodniona AS order_line_sku_calculated_price
                       FROM cdn.zamelem e
                           JOIN cdn.magazyny m ON e.zae_magnumer = m.mag_gidnumer
                       WHERE e.zae_gidnumer = n.zan_gidnumer
@@ -185,11 +193,12 @@ aggregates:
       FROM CHANGETABLE(CHANGES CDN.ZamNag, @version) AS c
           JOIN CDN.ZamNag n ON c.zan_gidnumer = n.zan_gidnumer
           JOIN CDN.KntKarty k ON n.zan_kntnumer = k.knt_gidnumer
+          JOIN CDN.Magazyny m ON n.zan_magnumer = m.mag_gidnumer
       WHERE 1=1
           AND n.zan_zamtyp = 1280
 
   - name: "customer"
-    interval: 60
+    interval: 15
     get_query: |
       SELECT
           CASE c.SYS_CHANGE_OPERATION WHEN 'U' THEN 'updated' WHEN 'D' THEN 'deleted' WHEN 'I' THEN 'inserted' ELSE 'modified' END as change_operation,
@@ -211,63 +220,71 @@ aggregates:
           CONVERT(VARCHAR(32), HASHBYTES('MD5', CAST(c.Knt_GidNumer AS VARCHAR(40))), 2) AS aggregate_key,
           JSON_QUERY((
               SELECT
+                  CASE k.knt_archiwalny WHEN 0 THEN 1 ELSE 0 END AS status,
                   c.knt_gidnumer as customer_id,
                   k.knt_akronim as customer_code,
-                  e.KGD_Kod as customer_group,
-                  UPPER(COALESCE(NULLIF(TRIM(CONCAT_WS(' ', p.prc_imie1, p.prc_nazwisko)), ''), 'N/D')) AS customer_owner,        
+                  UPPER(COALESCE(NULLIF(TRIM(CONCAT_WS(' ', p.prc_imie1, p.prc_nazwisko)), ''), 'N/D')) AS customer_service_owner,
+                  e.KGD_Kod as customer_sales_area,
                   UPPER(TRIM(CONCAT_WS(' ', k.knt_nazwa1, k.knt_nazwa2, k.knt_nazwa3))) AS customer_name,
-                  k.knt_nipprefiks as customer_tax_prefix,
-                  COALESCE(k.knt_nipe, k.knt_nip) AS customer_tax_id,
                   TRIM(SUBSTRING(n.naz_nazwa,1,10)) AS customer_price_list,
                   k.knt_rabat AS customer_discount,
-                  CASE k.knt_archiwalny WHEN 0 THEN 'AKTYWNY' ELSE 'NIEAKTYWNY' END AS customer_status,
+                  k.Knt_LimitOkres AS customer_payment_terms,
+                  k.knt_nipprefiks as customer_tax_prefix,
+                  COALESCE(k.knt_nipe, k.knt_nip) AS customer_tax_number,
+                  k.knt_ulica AS customer_address_street,
+                  k.knt_kraj AS customer_address_country,
+                  k.knt_kodp customer_address_zip,
+                  k.knt_miasto AS customer_address_city,
+                  k.knt_telefon1 AS customer_phone_number,
+                  k.knt_telefon2 AS customer_fax_number,
+                  k.knt_email AS customer_email,
                   JSON_QUERY((
                       SELECT
-                      a.kna_akronim as adress_code,
+                      a.kna_akronim as address_code,
                       CASE
                           WHEN k.knt_knanumer = a.KnA_GIDNumer THEN 'AKTUALNY'
                           WHEN a.kna_wysylkowy = 1 THEN 'WYSYŁKOWY'
                           ELSE 'INNY'
                       END AS address_type,
-                      UPPER(a.kna_ulica) as adress_street,
-                      UPPER(a.kna_kraj) as adress_country,
-                      UPPER(a.kna_kodp) as adress_zip,
-                      UPPER(a.kna_miasto) as adress_city,
-                      UPPER(a.kna_wojewodztwo) as adress_district,
-                      a.kna_telefon1 as adress_phone1,
-                      a.kna_telefon2 as adress_phone2,
-                      a.kna_fax as adress_fax,
-                      a.kna_modem as adress_mode,
-                      a.kna_telex as adress_gsm,
-                      a.kna_email as adress_email
+                      UPPER(a.kna_ulica) as address_street,
+                      UPPER(a.kna_kraj) as address_country,
+                      UPPER(a.kna_kodp) as address_zip,
+                      UPPER(a.kna_miasto) as address_city,
+                      UPPER(a.kna_wojewodztwo) as address_district,
+                      a.kna_telefon1 as address_phone1,
+                      a.kna_telefon2 as address_phone2,
+                      a.kna_fax as address_fax,
+                      a.kna_modem as address_mode,
+                      a.kna_telex as address_gsm,
+                      a.kna_email as address_email
                       FROM CDN.KntAdresy a
                       WHERE a.KnA_KntNumer = k.Knt_GIDNumer AND a.kna_dataarc = 0
                       FOR JSON PATH
-                  )) AS adresses,
+                  )) AS addresses,
                   JSON_QUERY((
                       SELECT
-                          o.kns_kntlp as id,
-                          o.kns_nazwa as name,
-                          o.kns_stanowisko as position,
-                          o.kns_email as email,
-                          o.kns_telefon as phone,
-                          o.kns_telefonk as mobile
+                          o.kns_kntlp as contact_id,
+                          o.kns_nazwa as contact_name,
+                          o.kns_stanowisko as contact_position,
+                          o.kns_email as contact_email,
+                          o.kns_telefon as contact_phone,
+                          o.kns_telefonk as contact_mobile
                       FROM CDN.KntOsoby o
                       WHERE k.Knt_GIDNumer = o.KnS_KntNumer AND o.kns_archiwalny = 0
                       FOR JSON PATH
-                  )) AS contacts,
+                  )) AS customer_contacts,
                   JSON_QUERY((
                       SELECT
                           o.klk_id as credit_id,
-                          DATEADD(DAY, o.klk_dataod, '1800-12-28') as valid_from,
-                          DATEADD(DAY, o.klk_datado, '1800-12-28') as valid_to,
+                          DATEADD(DAY, o.klk_dataod, '1800-12-28') as credit_valid_from,
+                          DATEADD(DAY, o.klk_datado, '1800-12-28') as credit_valid_to,
                           o.klk_maxlimitwart as credit_value,
                           o.klk_waluta as credit_currency
                       FROM CDN.KntLimityK o
                       WHERE k.Knt_GIDNumer = o.Klk_KntNumer
                       AND o.klk_datado > DATEDIFF(DAY, '1800-12-28', GETDATE())
                       FOR JSON PATH
-                  )) AS credits
+                  )) AS customer_credits
                   FOR JSON PATH, WITHOUT_ARRAY_WRAPPER
               )) AS payload
       FROM CHANGETABLE(CHANGES CDN.KntKarty, @version) AS c
@@ -357,13 +374,13 @@ aggregates:
           CONVERT(VARCHAR(32), HASHBYTES('MD5', CAST(c.Knt_GidNumer AS VARCHAR(40))), 2) AS aggregate_key,
           JSON_QUERY((
               SELECT
-                  c.knt_gidnumer as customer_id,
-                  k.knt_akronim as cusomer_code,
-                  t.sku_id,
-                  t.sku_code,
-                  t.price_value,
-                  t.price_currency,
-                  t.price_type
+                  c.knt_gidnumer as priceterm_customer_id,
+                  k.knt_akronim as priceterm_cusomer_code,
+                  t.sku_id as priceterm_sku_id,
+                  t.sku_code as priceterm_sku_code,
+                  t.price_value as priceterm_price,
+                  t.price_currency as priceterm_currency,
+                  t.price_type as priceterm_net_gross_flag
               FOR JSON PATH, WITHOUT_ARRAY_WRAPPER
           )) AS payload
       FROM CHANGETABLE(CHANGES CDN.KntKarty, @version) AS c
