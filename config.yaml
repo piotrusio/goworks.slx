@@ -198,7 +198,7 @@ aggregates:
           AND n.zan_zamtyp = 1280
 
   - name: "customer"
-    interval: 15
+    interval: 60
     get_query: |
       SELECT
           CASE c.SYS_CHANGE_OPERATION WHEN 'U' THEN 'updated' WHEN 'D' THEN 'deleted' WHEN 'I' THEN 'inserted' ELSE 'modified' END as change_operation,
@@ -386,3 +386,249 @@ aggregates:
       FROM CHANGETABLE(CHANGES CDN.KntKarty, @version) AS c
           JOIN CDN.KntKarty k on c.knt_gidnumer = k.knt_gidnumer
           JOIN terms t ON t.customer_id = k.knt_gidnumer
+
+  - name: "invoice"
+    interval: 60
+    get_query: |
+      SELECT
+          CASE c.SYS_CHANGE_OPERATION WHEN 'U' THEN 'updated' WHEN 'D' THEN 'deleted' WHEN 'I' THEN 'inserted' ELSE 'modified' END as change_operation,
+          c.SYS_CHANGE_VERSION as change_version,
+          CONVERT(VARCHAR(32), HASHBYTES('MD5', CAST(c.trn_gidnumer AS VARCHAR(40))), 2) AS aggregate_key,
+          JSON_QUERY((
+              SELECT
+                  c.trn_gidnumer as invoice_id
+              FOR JSON PATH, WITHOUT_ARRAY_WRAPPER
+          )) AS payload
+      FROM CHANGETABLE(CHANGES CDN.TraNag, @version) AS c
+      WHERE 1=1
+          AND c.SYS_CHANGE_OPERATION = 'D'
+
+      UNION ALL
+
+      SELECT
+          CASE c.SYS_CHANGE_OPERATION WHEN 'U' THEN 'updated' WHEN 'D' THEN 'deleted' WHEN 'I' THEN 'inserted' ELSE 'modified' END as change_operation,
+          c.SYS_CHANGE_VERSION as change_version,
+          CONVERT(VARCHAR(32), HASHBYTES('MD5', CAST(c.trn_gidnumer AS VARCHAR(40))), 2) AS aggregate_key,
+          JSON_QUERY((
+          SELECT
+            n.trn_gidnumer AS invoice_id,
+            n.trn_kntnumer AS invoice_customer_id,
+            k.knt_akronim AS invoice_customer_code,
+            CASE n.trn_stan 
+              WHEN 1 THEN 'W BUFORZE'
+              WHEN 2 THEN 'W BUFORZE PO REEDYCJI'
+              WHEN 3 THEN 'ZAMKNIĘTY NIE ROZLICZONY'
+              WHEN 4 THEN 'W TRAKCIE ROZLICZENIA'
+              WHEN 5 THEN 'ZAMKNIĘTY'
+              WHEN 6 THEN 'ANULOWANY'
+              ELSE 'INNY'
+            END AS invoice_status,
+            o.ob_skrot + '-' + CAST(n.trn_trnnumer AS VARCHAR) + '/' + CAST(RIGHT(n.trn_trnrok, 2) AS VARCHAR) + '/' + n.trn_trnseria AS invoice_reference_number,
+            CAST(DATEADD(DAY, n.trn_data2, '18001228') AS DATE) AS invoice_date,
+            CAST(DATEADD(DAY, n.trn_data3, '18001228') AS DATE) AS invoice_sales_date,
+            n.trn_waluta AS invoice_currency,
+            n.trn_formanazwa AS invoice_payment_method,
+            n.trn_nettor AS invoice_net_value,
+            n.trn_vatr AS invoice_tax_value,
+                  JSON_QUERY((
+                      SELECT
+                          e.tre_gidlp AS line_id,
+                          e.tre_twrnumer AS sku_id,
+                          e.tre_twrkod AS invoice_sku_code,
+                          e.tre_flaganb AS invoice_net_gross_flag,
+                          e.tre_flagavat AS invoice_vat_flag,
+                          e.tre_ilosc AS invoice_line_qty,
+                          e.tre_waluta AS invoice_currency_code,
+                          e.tre_wartoscporabacie AS invoice_line_value_currency,
+                e.tre_ksiegowanetto as invoice_line_net_value_pln,
+                e.tre_kosztksiegowy as invoice_line_cost_pln,
+                          e.tre_stawkapod AS invoice_line_tax_rate,
+                          e.tre_ksiegowabrutto AS invoice_line_gross_value_pln
+                      FROM cdn.traelem e
+                      WHERE e.tre_gidnumer = n.trn_gidnumer
+                      FOR JSON PATH
+                  )) AS invoice_lines
+          FOR JSON PATH, WITHOUT_ARRAY_WRAPPER
+          )) AS payload
+      FROM CHANGETABLE(CHANGES CDN.TraNag, @version) AS c
+        JOIN CDN.TraNag n ON c.trn_gidnumer = n.trn_gidnumer
+        JOIN CDN.Obiekty o ON n.trn_gidtyp = o.ob_gidtyp
+        JOIN CDN.KntKarty k ON n.trn_kntnumer = k.knt_gidnumer
+      WHERE 1=1
+        AND n.trn_gidtyp IN (2033,2041,2034,2042,2037,2045)
+        AND dateadd(day, n.trn_data3, '18001228') >= '20240101'
+
+      UNION ALL
+
+      SELECT
+          CASE c.SYS_CHANGE_OPERATION WHEN 'U' THEN 'updated' WHEN 'D' THEN 'deleted' WHEN 'I' THEN 'inserted' ELSE 'modified' END as change_operation,
+          c.SYS_CHANGE_VERSION as change_version,
+          CONVERT(VARCHAR(32), HASHBYTES('MD5', CAST(c.trn_gidnumer AS VARCHAR(40))), 2) AS aggregate_key,
+          JSON_QUERY((
+          SELECT
+            n.trn_gidnumer AS invoice_id,
+            n.trn_kntnumer AS invoice_customer_id,
+            k.knt_akronim AS invoice_customer_code,
+            CASE n.trn_stan 
+              WHEN 1 THEN 'W BUFORZE'
+              WHEN 2 THEN 'W BUFORZE PO REEDYCJI'
+              WHEN 3 THEN 'ZAMKNIĘTY NIE ROZLICZONY'
+              WHEN 4 THEN 'W TRAKCIE ROZLICZENIA'
+              WHEN 5 THEN 'ZAMKNIĘTY'
+              WHEN 6 THEN 'ANULOWANY'
+              ELSE 'INNY'
+            END AS invoice_status,
+            o.ob_skrot + '-' + CAST(n1.trn_trnnumer AS VARCHAR) + '/' + CAST(RIGHT(n1.trn_trnrok, 2) AS VARCHAR) + '/' + n1.trn_trnseria AS invoice_reference_number,
+            CAST(DATEADD(DAY, n.trn_data2, '18001228') AS DATE) AS invoice_date,
+            CAST(DATEADD(DAY, n.trn_data3, '18001228') AS DATE) AS invoice_sales_date,
+            n.trn_waluta AS invoice_currency,
+            n.trn_formanazwa AS invoice_payment_method,
+            n.trn_nettor AS invoice_net_value,
+            n.trn_vatr AS invoice_tax_value,
+                  JSON_QUERY((
+                      SELECT
+                          e.tre_gidlp AS line_id,
+                          e.tre_twrnumer AS sku_id,
+                          e.tre_twrkod AS invoice_sku_code,
+                          e.tre_flaganb AS invoice_net_gross_flag,
+                          e.tre_flagavat AS invoice_vat_flag,
+                          e.tre_ilosc AS invoice_line_qty,
+                          e.tre_waluta AS invoice_currency_code,
+                          e.tre_wartoscporabacie AS invoice_line_value_currency,
+                e.tre_ksiegowanetto as invoice_line_net_value_pln,
+                e.tre_kosztksiegowy as invoice_line_cost_pln,
+                          e.tre_stawkapod AS invoice_line_tax_rate,
+                          e.tre_ksiegowabrutto AS invoice_line_gross_value_pln
+                      FROM cdn.traelem e
+                      WHERE e.tre_gidnumer = n.trn_gidnumer
+                      FOR JSON PATH
+                  )) AS invoice_lines
+          FOR JSON PATH, WITHOUT_ARRAY_WRAPPER
+          )) AS payload
+      FROM CHANGETABLE(CHANGES CDN.TraNag, @version) AS c
+        JOIN CDN.TraNag n ON c.trn_gidnumer = n.trn_gidnumer
+        JOIN CDN.TraNag n1 ON n1.trn_gidnumer = n.trn_spinumer AND n1.trn_gidtyp = n.trn_spityp
+        JOIN CDN.Obiekty o ON n1.trn_gidtyp = o.ob_gidtyp
+        JOIN CDN.KntKarty k ON n.trn_kntnumer = k.knt_gidnumer
+      WHERE 1=1
+        AND n.trn_gidtyp IN (2001, 2005, 2009, 2013)
+        AND dateadd(day, n.trn_data3, '18001228') >= '20240101'
+
+  - name: "payment"
+    interval: 60
+    get_query: |
+      SELECT
+          CASE c.SYS_CHANGE_OPERATION WHEN 'U' THEN 'updated' WHEN 'D' THEN 'deleted' WHEN 'I' THEN 'inserted' ELSE 'modified' END as change_operation,
+          c.SYS_CHANGE_VERSION as change_version,
+          CONVERT(VARCHAR(32), HASHBYTES('MD5', 
+              ISNULL(CAST(c.trp_gidtyp AS VARCHAR(40)), '') + '|' + 
+              ISNULL(CAST(c.trp_gidnumer AS VARCHAR(40)), '') + '|' + 
+              ISNULL(CAST(c.trp_gidlp AS VARCHAR(40)), '')
+          ), 2) AS aggregate_key,
+          JSON_QUERY((
+              SELECT
+                  CONVERT(BIGINT, (c.trp_gidnumer))*10000 + c.trp_gidlp AS payment_id
+              FOR JSON PATH, WITHOUT_ARRAY_WRAPPER
+          )) AS payload
+      FROM CHANGETABLE(CHANGES CDN.TraPlat, @version) AS c
+      WHERE 1=1
+          AND c.SYS_CHANGE_OPERATION = 'D'
+
+      UNION ALL
+
+      SELECT
+          CASE c.SYS_CHANGE_OPERATION WHEN 'U' THEN 'updated' WHEN 'D' THEN 'deleted' WHEN 'I' THEN 'inserted' ELSE 'modified' END as change_operation,
+          c.SYS_CHANGE_VERSION as change_version,
+          CONVERT(VARCHAR(32), HASHBYTES('MD5', 
+              ISNULL(CAST(c.trp_gidtyp AS VARCHAR(40)), '') + '|' + 
+              ISNULL(CAST(c.trp_gidnumer AS VARCHAR(40)), '') + '|' + 
+              ISNULL(CAST(c.trp_gidlp AS VARCHAR(40)), '')
+          ), 2) AS aggregate_key,
+          JSON_QUERY((
+            SELECT
+              CONVERT(BIGINT, (p.trp_gidnumer))*10000 + p.trp_gidlp AS payment_id,
+              n.trn_kntnumer AS payment_source_customer_id,
+              r.knt_akronim AS payment_source_customer_code,
+              p.trp_kntnumer AS pyament_target_customer_id,
+              k.knt_akronim AS payment_target_customer_code,
+              CASE n.trn_stan 
+                WHEN 1 THEN 'W BUFORZE'
+                WHEN 2 THEN 'W BUFORZE PO REEDYCJI'
+                WHEN 3 THEN 'ZAMKNIĘTY NIE ROZLICZONY'
+                WHEN 4 THEN 'W TRAKCIE ROZLICZENIA'
+                WHEN 5 THEN 'ZAMKNIĘTY'
+                WHEN 6 THEN 'ANULOWANY'
+              END AS payment_document_status,
+              o.ob_skrot + '-' + CAST(n.trn_trnnumer AS VARCHAR) + '/' + CAST(RIGHT(n.trn_trnrok, 2) AS VARCHAR) + '/' + n.trn_trnseria AS payment_reference,
+              CAST(DATEADD(DAY, n.trn_data3, '18001228') AS DATE) AS payment_create_date,
+              CAST(DATEADD(DAY, p.trp_termin, '18001228') AS DATE) AS payment_due_date,
+              p.trp_waluta AS payment_currency,
+              CAST(p.trp_kursl/p.trp_kursm AS DECIMAL(15,2)) AS payment_currency_rate,
+              CASE WHEN p.trp_typ = 1 THEN -p.trp_kwota ELSE p.trp_kwota END AS payment_total_value,
+              CASE WHEN p.trp_typ = 1 THEN -p.trp_pozostaje ELSE p.trp_pozostaje END AS payment_remaining_value,
+              CASE p.trp_typ
+                WHEN 1 THEN 'ZOBOWIĄZANIE'
+                WHEN 2 THEN 'NALEŻNOŚĆ'
+              END AS payment_type,
+              CASE p.trp_rozliczona
+                WHEN 0 THEN 'NIE ROZLICZONA'
+                WHEN 1 THEN 'ROZLICZONA'
+                WHEN 2 THEN 'NIE ROZLICZAJ'
+              END AS payment_status
+            FOR JSON PATH, WITHOUT_ARRAY_WRAPPER
+        )) AS payload
+      FROM CHANGETABLE(CHANGES CDN.TraPlat, @version) AS c
+        JOIN CDN.traplat p ON c.trp_gidtyp = p.trp_gidtyp AND c.trp_gidnumer = p.trp_gidnumer AND c.trp_gidlp = p.trp_gidlp
+        JOIN CDN.tranag n ON n.trn_gidtyp = p.trp_gidtyp AND n.trn_gidnumer = p.trp_gidnumer
+        JOIN CDN.Obiekty o ON n.trn_gidtyp = o.ob_gidtyp
+        JOIN CDN.KntKarty r ON n.trn_kntnumer = r.knt_gidnumer
+        JOIN CDN.KntKarty k ON k.knt_gidnumer = p.trp_kntnumer
+      WHERE
+        n.trn_gidtyp IN (2033,2041,2034,2042,2037,2045)
+
+      UNION ALL
+      SELECT
+          CASE c.SYS_CHANGE_OPERATION WHEN 'U' THEN 'updated' WHEN 'D' THEN 'deleted' WHEN 'I' THEN 'inserted' ELSE 'modified' END as change_operation,
+          c.SYS_CHANGE_VERSION as change_version,
+          CONVERT(VARCHAR(32), HASHBYTES('MD5', 
+              ISNULL(CAST(c.trp_gidtyp AS VARCHAR(40)), '') + '|' + 
+              ISNULL(CAST(c.trp_gidnumer AS VARCHAR(40)), '') + '|' + 
+              ISNULL(CAST(c.trp_gidlp AS VARCHAR(40)), '')
+          ), 2) AS aggregate_key,
+          JSON_QUERY((
+            SELECT
+              CONVERT(BIGINT, (p.trp_gidnumer))*10000 + p.trp_gidlp AS payment_id,
+              k.knt_gidnumer AS payment_source_customer_id,
+              k.knt_akronim AS payment_source_customer_code,
+              k.knt_gidnumer AS pyament_target_customer_id,
+              k.knt_akronim AS payment_target_customer_code,
+              '' AS payment_document_status,
+              bos.bos_numerdokumentu AS payment_reference,
+              CAST(DATEADD(DAY, bos.bos_data, '18001228') AS DATE) AS payment_create_date,
+              CAST(DATEADD(DAY, p.trp_termin, '18001228') AS DATE) AS payment_due_date,
+              p.trp_waluta AS payment_currency,
+              CAST(p.trp_kursl/p.trp_kursm AS DECIMAL(15,2)) AS payment_currency_rate,
+              CASE WHEN p.trp_typ = 1 THEN -p.trp_kwota ELSE p.trp_kwota END AS payment_total_value,
+              CASE WHEN p.trp_typ = 1 THEN -p.trp_pozostaje ELSE p.trp_pozostaje END AS payment_remaining_value,
+              CASE p.trp_typ
+                WHEN 1 THEN 'ZOBOWIĄZANIE'
+                WHEN 2 THEN 'NALEŻNOŚĆ'
+              END AS payment_type,
+              CASE p.trp_rozliczona
+                WHEN 0 THEN 'NIE ROZLICZONA'
+                WHEN 1 THEN 'ROZLICZONA'
+                WHEN 2 THEN 'NIE ROZLICZAJ'
+              END AS payment_status
+            FOR JSON PATH, WITHOUT_ARRAY_WRAPPER
+        )) AS payload
+      FROM CHANGETABLE(CHANGES CDN.TraPlat, @version) AS c
+        JOIN CDN.traplat p ON c.trp_gidtyp = p.trp_gidtyp AND c.trp_gidnumer = p.trp_gidnumer AND c.trp_gidlp = p.trp_gidlp
+        JOIN CDN.BilansOtwarciaElem AS bo ON p.trp_gidnumer = bo.boe_gidnumer AND p.trp_gidtyp = bo.boe_gidtyp AND p.trp_gidlp = bo.boe_gidlp AND bo.boe_gidtyp = 7680 AND bo.boe_gidnumer IN (6, 11, 17)
+        JOIN CDN.BilansOtwarciaSelem AS bos ON bo.boe_gidnumer = bos.bos_trpnumer AND bo.boe_gidtyp = bos.bos_trptyp AND bo.boe_gidlp = bos.bos_trplp
+        JOIN CDN.KntKarty k ON k.knt_gidnumer = p.trp_kntnumer
+      WHERE ( bos.bos_numerdokumentu LIKE 'FS%'
+          OR bos.bos_numerdokumentu LIKE 'PA%'
+          OR bos.bos_numerdokumentu LIKE 'FSE%'
+          OR bos.bos_numerdokumentu LIKE 'FSK%'
+          OR bos.bos_numerdokumentu LIKE 'PAK%'
+          OR bos.bos_numerdokumentu LIKE 'FKE%')
