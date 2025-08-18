@@ -42,7 +42,7 @@ func (p *PostgresPublisher) Publish(ctx context.Context, subject string, envelop
     }
 
     query := `
-        INSERT INTO erp_events (
+        INSERT INTO events (
             event_id, event_type, event_version, aggregate_key,
             change_version, timestamp, correlation_id, causation_id,
             user_id, payload
