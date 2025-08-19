@@ -1,6 +1,7 @@
 IF NOT EXISTS (SELECT name FROM master.dbo.sysdatabases WHERE name = 'ERPXL_GO')
 BEGIN
-  CREATE DATABASE ERPXL_GO;
+    CREATE DATABASE ERPXL_GO
+    COLLATE Polish_100_CI_AS;
 END
 GO
 
@@ -17,7 +18,7 @@ GO
 CREATE TABLE [CDN].[Dostawy](
 	[Dst_GIDTyp] [smallint] NULL,
 	[Dst_GIDFirma] [int] NULL,
-	[Dst_GIDNumer] [int] IDENTITY(1,1) NOT NULL,
+	[Dst_GIDNumer] [int] NOT NULL,
 	[Dst_GIDLp] [smallint] NULL,
 	[Dst_TrnTyp] [smallint] NULL,
 	[Dst_TrnFirma] [int] NULL,
@@ -56,7 +57,7 @@ GO
 CREATE TABLE [CDN].[KntAdresy](
 	[KnA_GIDTyp] [smallint] NULL,
 	[KnA_GIDFirma] [int] NULL,
-	[KnA_GIDNumer] [int] IDENTITY(1,1) NOT NULL,
+	[KnA_GIDNumer] [int] NOT NULL,
 	[KnA_GIDLp] [smallint] NULL,
 	[KnA_KntTyp] [smallint] NULL,
 	[KnA_KntFirma] [int] NULL,
@@ -154,7 +155,7 @@ GO
 CREATE TABLE [CDN].[KntKarty](
 	[Knt_GIDTyp] [smallint] NULL,
 	[Knt_GIDFirma] [int] NULL,
-	[Knt_GIDNumer] [int] IDENTITY(1,1) NOT NULL,
+	[Knt_GIDNumer] [int] NOT NULL,
 	[Knt_GIDLp] [smallint] NULL,
 	[Knt_KnATyp] [smallint] NULL,
 	[Knt_KnAFirma] [int] NULL,
@@ -372,7 +373,7 @@ CREATE TABLE [CDN].[KntKarty](
 GO
 
 CREATE TABLE [CDN].[KntLimityK](
-	[KLK_Id] [int] IDENTITY(1,1) NOT NULL,
+	[KLK_Id] [int] NOT NULL,
 	[KLK_KntTyp] [smallint] NULL,
 	[KLK_KntNumer] [int] NULL,
 	[KLK_MaxLimitWart] [decimal](15, 2) NULL,
@@ -442,7 +443,7 @@ CREATE TABLE [CDN].[KntOsoby](
 	[KnS_AdresId] [int] NULL,
 	[KnS_OdpWindykacja] [tinyint] NULL,
 	[KnS_Anonim] [tinyint] NULL,
-	[KnS_SyncID] [int] IDENTITY(1,1) NOT NULL,
+	[KnS_SyncID] [int] NOT NULL,
 	[KnS_ESklep] [tinyint] NULL,
 	[KnS_AdminESklep] [tinyint] NULL,
 	[KnS_PreferowanyJezyk] [int] NULL,
@@ -455,7 +456,7 @@ CREATE TABLE [CDN].[KntOsoby](
 GO
 
 CREATE TABLE [CDN].[KntPromocje](
-	[KPR_Id] [int] IDENTITY(1,1) NOT NULL,
+	[KPR_Id] [int] NOT NULL,
 	[KPR_PrmId] [int] NULL,
 	[KPR_KntTyp] [smallint] NULL,
 	[KPR_KntFirma] [int] NULL,
@@ -478,7 +479,7 @@ GO
 CREATE TABLE [CDN].[Magazyny](
 	[MAG_GIDTyp] [smallint] NULL,
 	[MAG_GIDFirma] [int] NULL,
-	[MAG_GIDNumer] [int] IDENTITY(1,1) NOT NULL,
+	[MAG_GIDNumer] [int] NOT NULL,
 	[MAG_GIDLp] [smallint] NULL,
 	[MAG_Kod] [varchar](10) NULL,
 	[MAG_Nazwa] [varchar](30) NULL,
@@ -544,7 +545,7 @@ GO
 CREATE TABLE [CDN].[PrcKarty](
 	[Prc_GIDTyp] [smallint] NULL,
 	[Prc_GIDFirma] [int] NULL,
-	[Prc_GIDNumer] [int] IDENTITY(1,1) NOT NULL,
+	[Prc_GIDNumer] [int] NOT NULL,
 	[Prc_GIDLp] [smallint] NULL,
 	[Prc_OpeTyp] [smallint] NULL,
 	[Prc_OpeFirma] [int] NULL,
@@ -633,7 +634,7 @@ CREATE TABLE [CDN].[PrcKarty](
 GO
 
 CREATE TABLE [CDN].[PrmKarty](
-	[PRM_Id] [int] IDENTITY(1,1) NOT NULL,
+	[PRM_Id] [int] NOT NULL,
 	[PRM_Akronim] [varchar](200) NULL,
 	[PRM_DataOd] [int] NULL,
 	[PRM_DataDo] [int] NULL,
@@ -695,7 +696,7 @@ CREATE TABLE [CDN].[TwrCeny](
 	[TwC_TwrFirma] [int] NULL,
 	[TwC_TwrNumer] [int] NULL,
 	[TwC_TwrLp] [smallint] NULL,
-	[TwC_ID] [int] IDENTITY(1,1) NOT NULL,
+	[TwC_ID] [int] NOT NULL,
 	[TwC_Waluta] [varchar](3) NULL,
 	[TwC_NrKursu] [smallint] NULL,
 	[TwC_Marza] [decimal](6, 2) NULL,
@@ -723,7 +724,7 @@ CREATE TABLE [CDN].[TwrCeny](
 GO
 
 CREATE TABLE [CDN].[TwrCenyNag](
-	[TCN_Id] [int] IDENTITY(1,1) NOT NULL,
+	[TCN_Id] [int] NOT NULL,
 	[TCN_RodzajCeny] [int] NULL,
 	[TCN_Nazwa] [varchar](100) NULL,
 	[TCN_DataOd] [int] NULL,
@@ -774,7 +775,7 @@ GO
 CREATE TABLE [CDN].[TwrKarty](
 	[Twr_GIDTyp] [smallint] NULL,
 	[Twr_GIDFirma] [int] NULL,
-	[Twr_GIDNumer] [int] IDENTITY(1,1) NOT NULL,
+	[Twr_GIDNumer] [int] NOT NULL,
 	[Twr_GIDLp] [smallint] NULL,
 	[Twr_Typ] [tinyint] NULL,
 	[Twr_Kod] [varchar](40) NULL,
@@ -973,7 +974,7 @@ CREATE TABLE [CDN].[TwrKarty](
 GO
 
 CREATE TABLE [CDN].[TwrPromocje](
-	[TPR_Id] [int] IDENTITY(1,1) NOT NULL,
+	[TPR_Id] [int] NOT NULL,
 	[TPR_PrmId] [int] NULL,
 	[TPR_TwrTyp] [smallint] NULL,
 	[TPR_TwrFirma] [int] NULL,
@@ -1116,7 +1117,7 @@ GO
 CREATE TABLE [CDN].[ZamNag](
 	[ZaN_GIDTyp] [smallint] NULL,
 	[ZaN_GIDFirma] [int] NULL,
-	[ZaN_GIDNumer] [int] IDENTITY(1,1) NOT NULL,
+	[ZaN_GIDNumer] [int] NOT NULL,
 	[ZaN_GIDLp] [smallint] NULL,
 	[ZaN_ZrdTyp] [smallint] NULL,
 	[ZaN_ZrdFirma] [int] NULL,
@@ -1526,7 +1527,7 @@ GO
 CREATE TABLE [CDN].[TraNag](
 	[TrN_GIDTyp] [smallint] NULL,
 	[TrN_GIDFirma] [int] NULL,
-	[TrN_GIDNumer] [int] IDENTITY(1,1) NOT NULL,
+	[TrN_GIDNumer] [int] NOT NULL,
 	[TrN_GIDLp] [smallint] NULL,
 	[TrN_ZwrTyp] [smallint] NULL,
 	[TrN_ZwrFirma] [int] NULL,
