@@ -423,6 +423,7 @@ aggregates:
               WHEN 6 THEN 'ANULOWANY'
               ELSE 'INNY'
             END AS invoice_status,
+            o.Ob_Skrot as invoice_type,
             o.ob_skrot + '-' + CAST(n.trn_trnnumer AS VARCHAR) + '/' + CAST(RIGHT(n.trn_trnrok, 2) AS VARCHAR) + '/' + n.trn_trnseria AS invoice_reference_number,
             CAST(DATEADD(DAY, n.trn_data2, '18001228') AS DATE) AS invoice_date,
             CAST(DATEADD(DAY, n.trn_data3, '18001228') AS DATE) AS invoice_sales_date,
@@ -478,6 +479,7 @@ aggregates:
               WHEN 6 THEN 'ANULOWANY'
               ELSE 'INNY'
             END AS invoice_status,
+            o.Ob_Skrot as invoice_type,
             o.ob_skrot + '-' + CAST(n1.trn_trnnumer AS VARCHAR) + '/' + CAST(RIGHT(n1.trn_trnrok, 2) AS VARCHAR) + '/' + n1.trn_trnseria AS invoice_reference_number,
             CAST(DATEADD(DAY, n.trn_data2, '18001228') AS DATE) AS invoice_date,
             CAST(DATEADD(DAY, n.trn_data3, '18001228') AS DATE) AS invoice_sales_date,
